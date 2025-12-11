@@ -27,10 +27,10 @@ jobs:
       IMNODES_REPO: https://github.com/Nelarius/imnodes.git
       IMGUI_MARKDOWN_REPO: https://github.com/juliettef/imgui_markdown.git
       
-      # --- VERSION PINS (UPDATED WITH CONFIRMED IMNODES TAG) ---
-      IMGUI_TAG: v1.91.8                 # Your target ImGui version.
-      CIMGUIM_VERSION: ""                # Empty string = clone main branch (latest).
-      IMNODES_TAG: 0.5                   # CONFIRMED: Tag is '0.5', not 'v0.5'[citation:3].
+      # --- VERSION PINS ---
+      IMGUI_TAG: v1.91.8                 # Your target ImGui version
+      CIMGUIM_VERSION: ""                # Empty string = clone main branch (latest)
+      IMNODES_TAG: 0.5                   # Use tag '0.5' for imnodes
       IMGUI_MARKDOWN_COMMIT: 5b98a5da5b4f66c843f8e27c6c2d6fd2e5e3f9d7
 
     steps:
@@ -91,34 +91,43 @@ jobs:
           if (Test-Path "C:\vcpkg") { Remove-Item -Recurse -Force "C:\vcpkg" }
 
       # -----------------------------------------------------------------------
-      # Clone Repos & Submodules WITH SPECIFIC VERSIONS
+      # Clone Repos & Submodules - WITH CORRECTED CLONE FUNCTION
       # -----------------------------------------------------------------------
       - name: Clone repos with specific versions
         shell: bash
         run: |
-          # Function to clone with specific version (tag or commit).
+          # CORRECTED FUNCTION: Properly handles tags/branches vs commit hashes
           clone_with_version() {
             local repo_url=$1
             local dir_name=$2
             local version=$3
             echo "Cloning $dir_name..."
-            
+
             if [ -n "$version" ]; then
-              # Try to clone with the version as a branch/tag first.
-              git clone --branch "$version" --depth 1 "$repo_url" "$dir_name" 2>/dev/null || {
-                # If that fails, clone default branch and checkout the commit hash.
-                echo "  Version '$version' not a branch/tag, trying as commit..."
-                git clone --depth 1 "$repo_url" "$dir_name"
+              # Check if the version string looks like a commit hash (hexadecimal, 7+ chars)
+              if [[ "$version" =~ ^[0-9a-f]{7,40}$ ]]; then
+                echo "  Version '$version' is a commit hash. Performing full clone..."
+                git clone "$repo_url" "$dir_name"
                 cd "$dir_name"
                 git checkout "$version"
                 cd ..
-              }
+              else
+                # Treat it as a tag or branch name
+                echo "  Cloning tag/branch '$version'..."
+                if git clone --branch "$version" --depth 1 "$repo_url" "$dir_name"; then
+                  echo "  Successfully cloned."
+                else
+                  echo "  ERROR: Failed to clone tag/branch '$version'. It may not exist."
+                  exit 1 # Fail the step immediately
+                fi
+              fi
             else
-              # Clone the default branch (main/master) if no version specified.
+              # Clone the default branch shallowly if no version specified
+              echo "  Cloning default branch..."
               git clone --depth 1 "$repo_url" "$dir_name"
             fi
-            
-            # Update submodules if they exist.
+
+            # Update submodules if they exist
             if [ -f "$dir_name/.gitmodules" ]; then
               echo "  Updating submodules for $dir_name..."
               cd "$dir_name"
@@ -127,26 +136,26 @@ jobs:
             fi
           }
           
-          # Clone SDL libraries (latest).
+          # Clone SDL libraries (latest)
           clone_with_version "$SDL3_REPO" SDL3 ""
           clone_with_version "$SDL_IMAGE_REPO" SDL_image ""
           clone_with_version "$SDL_TTF_REPO" SDL_ttf ""
           clone_with_version "$SDL_MIXER_REPO" SDL_mixer ""
           clone_with_version "$SDL_NET_REPO" SDL_net ""
           
-          # Pin ImGui to v1.91.8 (YOUR TARGET VERSION).
+          # Pin ImGui to v1.91.8 (your target version)
           clone_with_version "$IMGUI_REPO" imgui "$IMGUI_TAG"
           
-          # Clone cimgui as latest main.
+          # Clone cimgui as latest main (will be synced with our pinned ImGui)
           clone_with_version "$CIMGUIM_REPO" cimgui "$CIMGUIM_VERSION"
           
           clone_with_version "$NFD_REPO" nfdex ""
           clone_with_version "$LUAJIT_REPO" luajit ""
           
-          # Pin imnodes to the confirmed tag '0.5'.
+          # Pin imnodes to the confirmed tag '0.5'
           clone_with_version "$IMNODES_REPO" imnodes "$IMNODES_TAG"
           
-          # Pin imgui_markdown to a specific commit.
+          # Pin imgui_markdown to a specific commit hash
           clone_with_version "$IMGUI_MARKDOWN_REPO" imgui_markdown "$IMGUI_MARKDOWN_COMMIT"
 
       # -----------------------------------------------------------------------
