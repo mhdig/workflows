@@ -361,6 +361,21 @@ jobs:
               EXPORT_API bool ImNodes_IsLinkCreated(int* s, int* e) { 
                   return ImNodes::IsLinkCreated(s, e); 
               }
+              EXPORT_API bool ImNodes_IsLinkDestroyed(int* link_id) { 
+                  return ImNodes::IsLinkDestroyed(link_id); 
+              }
+              EXPORT_API void ImNodes_SetNodeDraggable(int node_id, bool draggable) { 
+                  ImNodes::SetNodeDraggable(node_id, draggable); 
+              }
+              EXPORT_API void ImNodes_ClearNodeSelection() { 
+                  ImNodes::ClearNodeSelection(); 
+              }
+              EXPORT_API int ImNodes_NumSelectedNodes() { 
+                  return ImNodes::NumSelectedNodes(); 
+              }
+              EXPORT_API void ImNodes_MiniMap(float size_fraction, int location) { 
+                  ImNodes::MiniMap(size_fraction, static_cast<ImNodesMiniMapLocation>(location)); 
+              }
 
               // New style functions
               EXPORT_API ImNodesStyle* ImNodes_GetStyle() { return &ImNodes::GetStyle(); }
