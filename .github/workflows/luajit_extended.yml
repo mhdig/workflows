@@ -28,10 +28,10 @@ jobs:
       IMGUI_MARKDOWN_REPO: https://github.com/juliettef/imgui_markdown.git
       
       # --- VERSION PINS ---
-      IMGUI_TAG: v1.91.8                 # Your target ImGui version
-      CIMGUIM_VERSION: ""                # Use latest main for cimgui
-      IMNODES_VERSION: ""                # Use latest main for imnodes
-      IMGUI_MARKDOWN_VERSION: ""         # CHANGED: Use latest main for imgui_markdown
+      IMGUI_TAG: v1.91.8
+      CIMGUIM_VERSION: ""
+      IMNODES_VERSION: ""
+      IMGUI_MARKDOWN_VERSION: ""
 
     steps:
       - uses: actions/checkout@v4
@@ -91,12 +91,11 @@ jobs:
           if (Test-Path "C:\vcpkg") { Remove-Item -Recurse -Force "C:\vcpkg" }
 
       # -----------------------------------------------------------------------
-      # Clone Repos & Submodules - ALL USING LATEST MAIN WHERE POSSIBLE
+      # Clone Repos & Submodules
       # -----------------------------------------------------------------------
       - name: Clone repos with specific versions
         shell: bash
         run: |
-          # CORRECTED FUNCTION: Simplified and robust for tags/branches/commits
           clone_with_version() {
             local repo_url=$1
             local dir_name=$2
@@ -105,24 +104,20 @@ jobs:
 
             if [ -n "$version" ]; then
               echo "  Attempting to clone version '$version'..."
-              # First, try the standard shallow clone with --branch (works for branches and some tags)
               if git clone --branch "$version" --depth 1 "$repo_url" "$dir_name" 2>/dev/null; then
                 echo "  Successfully cloned via --branch flag."
               else
                 echo "  --branch flag failed. Performing full clone and checkout..."
-                # If that fails, do a full clone and then checkout the specific version
                 git clone "$repo_url" "$dir_name"
                 cd "$dir_name"
                 git checkout "$version"
                 cd ..
               fi
             else
-              # Clone the default branch shallowly if no version specified
               echo "  Cloning default branch..."
               git clone --depth 1 "$repo_url" "$dir_name"
             fi
 
-            # Update submodules if they exist
             if [ -f "$dir_name/.gitmodules" ]; then
               echo "  Updating submodules for $dir_name..."
               cd "$dir_name"
@@ -131,26 +126,16 @@ jobs:
             fi
           }
           
-          # Clone SDL libraries (latest)
           clone_with_version "$SDL3_REPO" SDL3 ""
           clone_with_version "$SDL_IMAGE_REPO" SDL_image ""
           clone_with_version "$SDL_TTF_REPO" SDL_ttf ""
           clone_with_version "$SDL_MIXER_REPO" SDL_mixer ""
           clone_with_version "$SDL_NET_REPO" SDL_net ""
-          
-          # Pin ImGui to v1.91.8 (your target version)
           clone_with_version "$IMGUI_REPO" imgui "$IMGUI_TAG"
-          
-          # Clone cimgui as latest main (will be synced with our pinned ImGui)
           clone_with_version "$CIMGUIM_REPO" cimgui "$CIMGUIM_VERSION"
-          
           clone_with_version "$NFD_REPO" nfdex ""
           clone_with_version "$LUAJIT_REPO" luajit ""
-          
-          # Use latest main for imnodes
           clone_with_version "$IMNODES_REPO" imnodes "$IMNODES_VERSION"
-          
-          # CHANGED: Use latest main for imgui_markdown
           clone_with_version "$IMGUI_MARKDOWN_REPO" imgui_markdown "$IMGUI_MARKDOWN_VERSION"
 
       # -----------------------------------------------------------------------
@@ -196,7 +181,7 @@ jobs:
           echo "$pwd/../../install/luajit/bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       # -----------------------------------------------------------------------
-      # Sync ImGui (CRITICAL STEP: Forces cimgui to use ImGui 1.91.8)
+      # Sync ImGui
       # -----------------------------------------------------------------------
       - name: Fix cimgui and imgui sync
         shell: bash
@@ -305,19 +290,22 @@ jobs:
       - name: Build Monolithic cimgui
         shell: bash
         run: |
-          # 1. Generate cimgui implementation against the synced ImGui (v1.91.8)
           LUAJIT_BIN="../../install/luajit/bin/luajit"
           if [ "$RUNNER_OS" == "Windows" ]; then LUAJIT_BIN="../../install/luajit/bin/luajit.exe"; fi
           cd cimgui/generator
           $LUAJIT_BIN ./generator.lua gcc "gcc"
           cd ../..
 
-          # 2. Create build dir
           mkdir -p build_monolithic
           cd build_monolithic
 
-          # 3. Create Markdown Wrapper
-          cat <<EOF > wrapper_markdown.cpp
+          cat << 'EOF' > wrapper_markdown.cpp
+          #ifdef _WIN32
+              #define EXPORT_API __declspec(dllexport)
+          #else
+              #define EXPORT_API __attribute__((visibility("default")))
+          #endif
+          
           #include "../imgui/imgui.h"
           #include "../imgui_markdown/imgui_markdown.h"
           #include <string.h>
@@ -325,9 +313,17 @@ jobs:
           static ImGui::MarkdownConfig mdConfig;
           
           extern "C" {
-              void Markdown_Init() { /* Setup if needed */ }
+              EXPORT_API void Markdown_Init() { 
+                  mdConfig.linkCallback = NULL;
+                  mdConfig.tooltipCallback = NULL;
+                  mdConfig.imageCallback = NULL;
+                  mdConfig.linkIcon = NULL;
+                  for (int i = 0; i < 3; i++) {
+                      mdConfig.headingFormats[i] = { NULL, (i == 0 || i == 1) };
+                  }
+              }
               
-              void Markdown_Render(const char* text, size_t length) {
+              EXPORT_API void Markdown_Render(const char* text, size_t length) {
                   if (!text) return;
                   if (length == 0) length = strlen(text);
                   ImGui::Markdown(text, length, mdConfig);
@@ -335,44 +331,89 @@ jobs:
           }
           EOF
 
-          # 4. Create ImNodes Wrapper
-          cat <<EOF > wrapper_imnodes.cpp
+          cat << 'EOF' > wrapper_imnodes.cpp
+          #ifdef _WIN32
+              #define EXPORT_API __declspec(dllexport)
+          #else
+              #define EXPORT_API __attribute__((visibility("default")))
+          #endif
+          
           #include "../imnodes/imnodes.h"
           
           extern "C" {
-              void ImNodes_CreateContext() { ImNodes::CreateContext(); }
-              void ImNodes_DestroyContext() { ImNodes::DestroyContext(); }
-              void ImNodes_BeginNodeEditor() { ImNodes::BeginNodeEditor(); }
-              void ImNodes_EndNodeEditor() { ImNodes::EndNodeEditor(); }
-              void ImNodes_BeginNode(int id) { ImNodes::BeginNode(id); }
-              void ImNodes_EndNode() { ImNodes::EndNode(); }
-              void ImNodes_BeginNodeTitleBar() { ImNodes::BeginNodeTitleBar(); }
-              void ImNodes_EndNodeTitleBar() { ImNodes::EndNodeTitleBar(); }
-              void ImNodes_BeginInputAttribute(int id) { ImNodes::BeginInputAttribute(id, ImNodesPinShape_CircleFilled); }
-              void ImNodes_EndInputAttribute() { ImNodes::EndInputAttribute(); }
-              void ImNodes_BeginOutputAttribute(int id) { ImNodes::BeginOutputAttribute(id, ImNodesPinShape_CircleFilled); }
-              void ImNodes_EndOutputAttribute() { ImNodes::EndOutputAttribute(); }
-              void ImNodes_Link(int id, int s, int e) { ImNodes::Link(id, s, e); }
-              bool ImNodes_IsLinkCreated(int* s, int* e) { return ImNodes::IsLinkCreated(s, e); }
+              EXPORT_API void ImNodes_CreateContext() { ImNodes::CreateContext(); }
+              EXPORT_API void ImNodes_DestroyContext() { ImNodes::DestroyContext(); }
+              EXPORT_API void ImNodes_BeginNodeEditor() { ImNodes::BeginNodeEditor(); }
+              EXPORT_API void ImNodes_EndNodeEditor() { ImNodes::EndNodeEditor(); }
+              EXPORT_API void ImNodes_BeginNode(int id) { ImNodes::BeginNode(id); }
+              EXPORT_API void ImNodes_EndNode() { ImNodes::EndNode(); }
+              EXPORT_API void ImNodes_BeginNodeTitleBar() { ImNodes::BeginNodeTitleBar(); }
+              EXPORT_API void ImNodes_EndNodeTitleBar() { ImNodes::EndNodeTitleBar(); }
+              EXPORT_API void ImNodes_BeginInputAttribute(int id) { 
+                  ImNodes::BeginInputAttribute(id, ImNodesPinShape_CircleFilled); 
+              }
+              EXPORT_API void ImNodes_EndInputAttribute() { ImNodes::EndInputAttribute(); }
+              EXPORT_API void ImNodes_BeginOutputAttribute(int id) { 
+                  ImNodes::BeginOutputAttribute(id, ImNodesPinShape_CircleFilled); 
+              }
+              EXPORT_API void ImNodes_EndOutputAttribute() { ImNodes::EndOutputAttribute(); }
+              EXPORT_API void ImNodes_Link(int id, int s, int e) { ImNodes::Link(id, s, e); }
+              EXPORT_API bool ImNodes_IsLinkCreated(int* s, int* e) { 
+                  return ImNodes::IsLinkCreated(s, e); 
+              }
           }
           EOF
 
-          # 5. Create CMakeLists.txt
-          cat <<EOF > CMakeLists.txt
+          cat << 'EOF' > CMakeLists.txt
           cmake_minimum_required(VERSION 3.10)
-          project(cimgui_monolithic)
+          project(cimgui_extended)
+          
           set(CMAKE_CXX_STANDARD 14)
-          set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-          include_directories(../cimgui ../cimgui/imgui ../imnodes ../imgui_markdown)
+          
+          if(WIN32)
+              set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+              add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+          else()
+              set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+              set(CMAKE_VISIBILITY_INLINES_HIDDEN 0)
+              add_compile_options(-fvisibility=default)
+          endif()
+          
+          include_directories(
+              ../cimgui 
+              ../cimgui/imgui 
+              ../imnodes 
+              ../imgui_markdown
+          )
+          
           file(GLOB IMGUI_SOURCES "../cimgui/imgui/*.cpp")
+          list(FILTER IMGUI_SOURCES EXCLUDE REGEX ".*imgui_demo.cpp")
+          
           file(GLOB IMNODES_SOURCES "../imnodes/*.cpp")
+          
           set(CIMGUI_SOURCE "../cimgui/cimgui.cpp")
-          set(WRAPPER_SOURCES "wrapper_markdown.cpp" "wrapper_imnodes.cpp")
-          add_library(cimgui SHARED \${IMGUI_SOURCES} \${IMNODES_SOURCES} \${CIMGUI_SOURCE} \${WRAPPER_SOURCES})
-          install(TARGETS cimgui LIBRARY DESTINATION lib ARCHIVE DESTINATION lib RUNTIME DESTINATION bin)
+          
+          set(WRAPPER_SOURCES 
+              "wrapper_markdown.cpp" 
+              "wrapper_imnodes.cpp"
+          )
+          
+          add_library(cimgui_extended SHARED 
+              ${IMGUI_SOURCES}
+              ${IMNODES_SOURCES}
+              ${CIMGUI_SOURCE}
+              ${WRAPPER_SOURCES}
+          )
+          
+          set_target_properties(cimgui_extended PROPERTIES OUTPUT_NAME "cimgui")
+          
+          install(TARGETS cimgui_extended
+              LIBRARY DESTINATION lib
+              ARCHIVE DESTINATION lib
+              RUNTIME DESTINATION bin
+          )
           EOF
 
-          # 6. Configure & Build
           CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(pwd)/../../install"
           if [ "$RUNNER_OS" == "macOS" ]; then
              export CFLAGS="-arch x86_64 -arch arm64"
@@ -384,6 +425,15 @@ jobs:
           cmake -G Ninja $CMAKE_ARGS .
           cmake --build .
           cmake --install .
+          
+          echo "Checking exported symbols..."
+          if [ "$RUNNER_OS" == "Windows" ]; then
+              objdump -x ./libcimgui.dll 2>/dev/null | grep -i "ImNodes\|Markdown" || echo "No symbols found"
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+              nm -gU ./libcimgui.dylib 2>/dev/null | grep -i "ImNodes\|Markdown" || echo "No symbols found"
+          else
+              nm -D ./libcimgui.so 2>/dev/null | grep -i "ImNodes\|Markdown" || echo "No symbols found"
+          fi
 
       # -----------------------------------------------------------------------
       # Build nfdex
@@ -426,46 +476,38 @@ jobs:
             find "$1" -maxdepth 1 -name "$2" -exec cp {} "$3" \; 2>/dev/null || true
           }
 
-          # --- SDL3 ---
           copy_if_exists "$SRC_BIN" "SDL3.dll" "organizelib/SDL3/"
           copy_if_exists "$SRC_LIB" "libSDL3.so*" "organizelib/SDL3/"
           copy_if_exists "$SRC_LIB" "libSDL3.dylib" "organizelib/SDL3/"
           cp install/share/licenses/SDL3/LICENSE.txt organizelib/SDL3/ 2>/dev/null || true
 
-          # --- SDL3_image ---
           copy_if_exists "$SRC_BIN" "SDL3_image.dll" "organizelib/SDL3_image/"
           copy_if_exists "$SRC_LIB" "libSDL3_image.so*" "organizelib/SDL3_image/"
           copy_if_exists "$SRC_LIB" "libSDL3_image.dylib" "organizelib/SDL3_image/"
           copy_if_exists "$SRC_BIN" "libSDL3_image.dll" "organizelib/SDL3_image/"
 
-          # --- SDL3_mixer ---
           copy_if_exists "$SRC_BIN" "SDL3_mixer.dll" "organizelib/SDL3_mixer/"
           copy_if_exists "$SRC_LIB" "libSDL3_mixer.so*" "organizelib/SDL3_mixer/"
           copy_if_exists "$SRC_LIB" "libSDL3_mixer.dylib" "organizelib/SDL3_mixer/"
           copy_if_exists "$SRC_BIN" "libSDL3_mixer.dll" "organizelib/SDL3_mixer/"
 
-          # --- SDL3_net ---
           copy_if_exists "$SRC_BIN" "SDL3_net.dll" "organizelib/SDL3_net/"
           copy_if_exists "$SRC_LIB" "libSDL3_net.so*" "organizelib/SDL3_net/"
           copy_if_exists "$SRC_LIB" "libSDL3_net.dylib" "organizelib/SDL3_net/"
           copy_if_exists "$SRC_BIN" "libSDL3_net.dll" "organizelib/SDL3_net/"
 
-          # --- SDL3_TTF ---
           copy_if_exists "$SRC_BIN" "SDL3_ttf.dll" "organizelib/SDL3_TTF/"
           copy_if_exists "$SRC_LIB" "libSDL3_ttf.so*" "organizelib/SDL3_TTF/"
           copy_if_exists "$SRC_LIB" "libSDL3_ttf.dylib" "organizelib/SDL3_TTF/"
           copy_if_exists "$SRC_BIN" "libSDL3_ttf.dll" "organizelib/SDL3_TTF/"
 
-          # --- cimgui (Monolithic) ---
           find build_monolithic -name "*.dll" -exec cp {} organizelib/cimgui/ \; 2>/dev/null || true
           find build_monolithic -name "*.so*" -exec cp {} organizelib/cimgui/ \; 2>/dev/null || true
           find build_monolithic -name "*.dylib" -exec cp {} organizelib/cimgui/ \; 2>/dev/null || true
           
-          # Copy Lua definitions
           cp cimgui/generator/output/*.lua organizelib/cimgui/ 2>/dev/null || true
           cp cimgui/*.lua organizelib/cimgui/ 2>/dev/null || true
           
-          # --- luaJIT ---
           copy_if_exists "install/luajit/bin" "lua51.dll" "organizelib/luaJIT/"
           copy_if_exists "install/luajit/bin" "luajit.exe" "organizelib/luaJIT/"
           copy_if_exists "install/luajit/lib" "libluajit-5.1.so*" "organizelib/luaJIT/"
@@ -473,13 +515,11 @@ jobs:
           copy_if_exists "install/luajit/bin" "luajit" "organizelib/luaJIT/"
           cp luajit/COPYRIGHT organizelib/luaJIT/LICENSE.txt 2>/dev/null || true
 
-          # --- nfdex ---
           copy_if_exists "$SRC_BIN" "nfd.dll" "organizelib/nfdex/"
           copy_if_exists "$SRC_BIN" "libnfd.dll" "organizelib/nfdex/"
           copy_if_exists "$SRC_LIB" "libnfd.so" "organizelib/nfdex/"
           copy_if_exists "$SRC_LIB" "libnfd.dylib" "organizelib/nfdex/"
 
-          # --- macOS Codesign (Ad-hoc) ---
           if [ "$RUNNER_OS" == "macOS" ]; then
             echo "Codesigning macOS dylibs..."
             find organizelib -name "*.dylib" -exec codesign -f -s - {} \;
