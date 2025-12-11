@@ -331,7 +331,7 @@ jobs:
           }
           EOF
           
-                    cat << 'EOF' > wrapper_imnodes.cpp
+          cat << 'EOF' > wrapper_imnodes.cpp
           #ifdef _WIN32
               #define EXPORT_API __declspec(dllexport)
           #else
@@ -361,10 +361,20 @@ jobs:
               EXPORT_API bool ImNodes_IsLinkCreated(int* s, int* e) { 
                   return ImNodes::IsLinkCreated(s, e); 
               }
+
+              // New style functions
+              EXPORT_API ImNodesStyle* ImNodes_GetStyle() { return &ImNodes::GetStyle(); }
+              EXPORT_API void ImNodes_StyleColorsDark() { ImNodes::StyleColorsDark(); }
+              EXPORT_API void ImNodes_StyleColorsLight() { ImNodes::StyleColorsLight(); }
+              EXPORT_API void ImNodes_StyleColorsClassic() { ImNodes::StyleColorsClassic(); }
+              EXPORT_API void ImNodes_PushColorStyle(int item, unsigned int color) { 
+                  ImNodes::PushColorStyle(item, color); 
+              }
+              EXPORT_API void ImNodes_PopColorStyle() { ImNodes::PopColorStyle(); }
           }
           EOF
           
-                    cat << 'EOF' > CMakeLists.txt
+          cat << 'EOF' > CMakeLists.txt
           cmake_minimum_required(VERSION 3.10)
           project(cimgui_extended)
           
