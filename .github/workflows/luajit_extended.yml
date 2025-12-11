@@ -29,9 +29,9 @@ jobs:
       
       # --- VERSION PINS ---
       IMGUI_TAG: v1.91.8                 # Your target ImGui version
-      CIMGUIM_VERSION: ""                # Empty string = clone main branch (latest)
-      IMNODES_VERSION: ""                # CHANGED: Use latest main for now
-      IMGUI_MARKDOWN_COMMIT: 5b98a5da5b4f66c843f8e27c6c2d6fd2e5e3f9d7
+      CIMGUIM_VERSION: ""                # Use latest main for cimgui
+      IMNODES_VERSION: ""                # Use latest main for imnodes
+      IMGUI_MARKDOWN_VERSION: ""         # CHANGED: Use latest main for imgui_markdown
 
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +91,7 @@ jobs:
           if (Test-Path "C:\vcpkg") { Remove-Item -Recurse -Force "C:\vcpkg" }
 
       # -----------------------------------------------------------------------
-      # Clone Repos & Submodules - UPDATED FUNCTION FOR TAGS
+      # Clone Repos & Submodules - ALL USING LATEST MAIN WHERE POSSIBLE
       # -----------------------------------------------------------------------
       - name: Clone repos with specific versions
         shell: bash
@@ -147,11 +147,11 @@ jobs:
           clone_with_version "$NFD_REPO" nfdex ""
           clone_with_version "$LUAJIT_REPO" luajit ""
           
-          # CHANGED: Use latest main for imnodes
+          # Use latest main for imnodes
           clone_with_version "$IMNODES_REPO" imnodes "$IMNODES_VERSION"
           
-          # Pin imgui_markdown to a specific commit hash
-          clone_with_version "$IMGUI_MARKDOWN_REPO" imgui_markdown "$IMGUI_MARKDOWN_COMMIT"
+          # CHANGED: Use latest main for imgui_markdown
+          clone_with_version "$IMGUI_MARKDOWN_REPO" imgui_markdown "$IMGUI_MARKDOWN_VERSION"
 
       # -----------------------------------------------------------------------
       # Build LuaJIT
