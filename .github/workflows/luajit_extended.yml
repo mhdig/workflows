@@ -1,0 +1,489 @@
+name: Build Shared Libraries Stack Universal Extended (ImGui 1.91.8)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    env:
+      SDL3_REPO: https://github.com/libsdl-org/SDL.git
+      SDL_IMAGE_REPO: https://github.com/libsdl-org/SDL_image.git
+      SDL_TTF_REPO: https://github.com/libsdl-org/SDL_ttf.git
+      SDL_MIXER_REPO: https://github.com/libsdl-org/SDL_mixer.git
+      SDL_NET_REPO: https://github.com/libsdl-org/SDL_net.git
+      IMGUI_REPO: https://github.com/ocornut/imgui.git
+      CIMGUIM_REPO: https://github.com/cimgui/cimgui.git
+      NFD_REPO: https://github.com/btzy/nativefiledialog-extended.git
+      LUAJIT_REPO: https://github.com/LuaJIT/LuaJIT.git
+      IMNODES_REPO: https://github.com/Nelarius/imnodes.git
+      IMGUI_MARKDOWN_REPO: https://github.com/juliettef/imgui_markdown.git
+      
+      # --- VERSION PINS (UPDATED WITH CONFIRMED IMNODES TAG) ---
+      IMGUI_TAG: v1.91.8                 # Your target ImGui version.
+      CIMGUIM_VERSION: ""                # Empty string = clone main branch (latest).
+      IMNODES_TAG: 0.5                   # CONFIRMED: Tag is '0.5', not 'v0.5'[citation:3].
+      IMGUI_MARKDOWN_COMMIT: 5b98a5da5b4f66c843f8e27c6c2d6fd2e5e3f9d7
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # WINDOWS - Setup MSVC Environment
+      # -----------------------------------------------------------------------
+      - name: Setup MSVC (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # -----------------------------------------------------------------------
+      # LINUX - Deps
+      # -----------------------------------------------------------------------
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential git ninja-build cmake pkg-config \
+            libfreetype6-dev libpng-dev libjpeg-dev libtiff-dev libwebp-dev \
+            libsndfile1-dev libvorbis-dev libopus-dev \
+            libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxi-dev \
+            libxcursor-dev libxss-dev libxfixes-dev libxtst-dev \
+            libwayland-dev wayland-protocols libwayland-egl-backend-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev libibus-1.0-dev \
+            libpipewire-0.3-dev libdecor-0-dev libgtk-3-dev
+
+      # -----------------------------------------------------------------------
+      # MACOS - Deps
+      # -----------------------------------------------------------------------
+      - name: Install macOS deps
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install cmake ninja pkg-config
+          echo "Uninstalling conflicting Homebrew libraries..."
+          brew uninstall --ignore-dependencies freetype harfbuzz libpng jpeg-turbo libtiff webp graphite2 || true
+          sudo rm -f /opt/homebrew/lib/libfreetype.dylib
+          sudo rm -f /opt/homebrew/lib/libharfbuzz.dylib
+          sudo rm -f /opt/homebrew/lib/libpng.dylib
+          sudo rm -f /opt/homebrew/lib/libjpeg.dylib
+          sudo rm -f /opt/homebrew/lib/libtiff.dylib
+
+      - name: Set macOS deployment target
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
+
+      # -----------------------------------------------------------------------
+      # WINDOWS - Deps
+      # -----------------------------------------------------------------------
+      - name: Install Windows deps
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          choco install ninja cmake -y
+          if (Test-Path "C:\vcpkg") { Remove-Item -Recurse -Force "C:\vcpkg" }
+
+      # -----------------------------------------------------------------------
+      # Clone Repos & Submodules WITH SPECIFIC VERSIONS
+      # -----------------------------------------------------------------------
+      - name: Clone repos with specific versions
+        shell: bash
+        run: |
+          # Function to clone with specific version (tag or commit).
+          clone_with_version() {
+            local repo_url=$1
+            local dir_name=$2
+            local version=$3
+            echo "Cloning $dir_name..."
+            
+            if [ -n "$version" ]; then
+              # Try to clone with the version as a branch/tag first.
+              git clone --branch "$version" --depth 1 "$repo_url" "$dir_name" 2>/dev/null || {
+                # If that fails, clone default branch and checkout the commit hash.
+                echo "  Version '$version' not a branch/tag, trying as commit..."
+                git clone --depth 1 "$repo_url" "$dir_name"
+                cd "$dir_name"
+                git checkout "$version"
+                cd ..
+              }
+            else
+              # Clone the default branch (main/master) if no version specified.
+              git clone --depth 1 "$repo_url" "$dir_name"
+            fi
+            
+            # Update submodules if they exist.
+            if [ -f "$dir_name/.gitmodules" ]; then
+              echo "  Updating submodules for $dir_name..."
+              cd "$dir_name"
+              git submodule update --init --recursive
+              cd ..
+            fi
+          }
+          
+          # Clone SDL libraries (latest).
+          clone_with_version "$SDL3_REPO" SDL3 ""
+          clone_with_version "$SDL_IMAGE_REPO" SDL_image ""
+          clone_with_version "$SDL_TTF_REPO" SDL_ttf ""
+          clone_with_version "$SDL_MIXER_REPO" SDL_mixer ""
+          clone_with_version "$SDL_NET_REPO" SDL_net ""
+          
+          # Pin ImGui to v1.91.8 (YOUR TARGET VERSION).
+          clone_with_version "$IMGUI_REPO" imgui "$IMGUI_TAG"
+          
+          # Clone cimgui as latest main.
+          clone_with_version "$CIMGUIM_REPO" cimgui "$CIMGUIM_VERSION"
+          
+          clone_with_version "$NFD_REPO" nfdex ""
+          clone_with_version "$LUAJIT_REPO" luajit ""
+          
+          # Pin imnodes to the confirmed tag '0.5'.
+          clone_with_version "$IMNODES_REPO" imnodes "$IMNODES_TAG"
+          
+          # Pin imgui_markdown to a specific commit.
+          clone_with_version "$IMGUI_MARKDOWN_REPO" imgui_markdown "$IMGUI_MARKDOWN_COMMIT"
+
+      # -----------------------------------------------------------------------
+      # Build LuaJIT
+      # -----------------------------------------------------------------------
+      - name: Build LuaJIT (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd luajit
+          make -j4 CCDEBUG=-g CC=cc PREFIX=$(pwd)/../install/luajit
+          make install PREFIX=$(pwd)/../install/luajit
+          echo "$(pwd)/../install/luajit/bin" >> $GITHUB_PATH
+
+      - name: Build LuaJIT (macOS Universal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd luajit
+          make clean
+          make -j4 CC="clang -target x86_64-apple-macos11"
+          mv src/libluajit.so src/libluajit_x86_64.dylib
+          mv src/luajit src/luajit_x86_64
+          make clean
+          make -j4 CC="clang -target arm64-apple-macos11"
+          mv src/libluajit.so src/libluajit_arm64.dylib
+          mv src/luajit src/luajit_arm64
+          lipo -create src/libluajit_x86_64.dylib src/libluajit_arm64.dylib -output src/libluajit.so
+          lipo -create src/luajit_x86_64 src/luajit_arm64 -output src/luajit
+          make install PREFIX=$(pwd)/../install/luajit
+          echo "$(pwd)/../install/luajit/bin" >> $GITHUB_PATH
+
+      - name: Build LuaJIT (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          cd luajit/src
+          .\msvcbuild.bat
+          New-Item -ItemType Directory -Force -Path "$pwd/../../install/luajit/bin"
+          New-Item -ItemType Directory -Force -Path "$pwd/../../install/luajit/include"
+          New-Item -ItemType Directory -Force -Path "$pwd/../../install/luajit/lib"
+          Copy-Item lua51.dll, luajit.exe "$pwd/../../install/luajit/bin/"
+          Copy-Item lua.h, luajit.h, lauxlib.h, lualib.h, luaconf.h "$pwd/../../install/luajit/include/"
+          Copy-Item lua51.lib "$pwd/../../install/luajit/lib/"
+          echo "$pwd/../../install/luajit/bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      # -----------------------------------------------------------------------
+      # Sync ImGui (CRITICAL STEP: Forces cimgui to use ImGui 1.91.8)
+      # -----------------------------------------------------------------------
+      - name: Fix cimgui and imgui sync
+        shell: bash
+        run: |
+          rm -rf cimgui/imgui
+          cp -R imgui cimgui/imgui
+
+      # -----------------------------------------------------------------------
+      # Build SDL3
+      # -----------------------------------------------------------------------
+      - name: Build SDL3 (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cmake -S SDL3 -B build_sdl3 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=ON -DSDL_STATIC=OFF \
+            -DSDL_TEST_LIBRARY=OFF -DSDL_VIDEO=ON -DSDL_RENDER=ON \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/install
+          cmake --build build_sdl3 --target install
+
+      - name: Build SDL3 (macOS Universal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cmake -S SDL3 -B build_sdl3 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
+            -DSDL_SHARED=ON -DSDL_STATIC=OFF \
+            -DSDL_TEST_LIBRARY=OFF -DSDL_VIDEO=ON -DSDL_RENDER=ON -DSDL_COCOA=ON \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/install
+          cmake --build build_sdl3 --target install
+
+      - name: Build SDL3 (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          cmake -S SDL3 -B build_sdl3 -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=ON -DSDL_STATIC=OFF `
+            -DSDL_TEST_LIBRARY=OFF -DSDL_VIDEO=ON -DSDL_RENDER=ON `
+            -DCMAKE_INSTALL_PREFIX="$pwd/install"
+          cmake --build build_sdl3 --target install
+
+      # -----------------------------------------------------------------------
+      # Build SDL Modules
+      # -----------------------------------------------------------------------
+      - name: Build SDL modules (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          for M in SDL_image SDL_ttf SDL_mixer SDL_net; do
+            cmake -S $M -B build_$M -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
+              -DSDL3IMAGE_VENDORED=ON -DSDL3MIXER_VENDORED=ON -DSDL3TTF_VENDORED=ON \
+              -DSDL3_DIR=$(pwd)/install/lib/cmake/SDL3 \
+              -DCMAKE_INSTALL_PREFIX=$(pwd)/install
+            cmake --build build_$M --target install
+          done
+
+      - name: Build SDL modules (macOS Universal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          export CFLAGS="-arch x86_64 -arch arm64"
+          export CXXFLAGS="-arch x86_64 -arch arm64"
+          export LDFLAGS="-arch x86_64 -arch arm64"
+          export PKG_CONFIG_PATH="$(pwd)/install/lib/pkgconfig"
+
+          for M in SDL_image SDL_ttf SDL_mixer SDL_net; do
+            cmake -S $M -B build_$M -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
+              -DBUILD_SHARED_LIBS=ON -DSDL3IMAGE_VENDORED=ON -DSDL3MIXER_VENDORED=ON \
+              -DSDL3TTF_VENDORED=ON -DSDLTTF_VENDORED=ON \
+              -DSDL3IMAGE_BACKEND_IMAGEIO=OFF -DSDL3TTF_PLUTOSVG=OFF \
+              -DCMAKE_IGNORE_PATH="/opt/homebrew;/usr/local" \
+              -DCMAKE_PREFIX_PATH="$(pwd)/install" -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
+            cmake --build build_$M --target install
+          done
+
+      - name: Build SDL modules (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S SDL_image -B build_SDL_image -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DSDL3IMAGE_BUILD_SHARED_LIBS=ON `
+            -DSDLSHARED=ON -DSDL3IMAGE_VENDORED=ON -DSDL3_DIR="$pwd/install/lib/cmake/SDL3" `
+            -DCMAKE_INSTALL_PREFIX="$pwd/install"
+          cmake --build build_SDL_image --target install
+
+          cmake -S SDL_ttf -B build_SDL_ttf -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DSDL3TTF_BUILD_SHARED_LIBS=ON `
+            -DSDLSHARED=ON -DSDL3TTF_VENDORED=ON -DSDL3_DIR="$pwd/install/lib/cmake/SDL3" `
+            -DCMAKE_INSTALL_PREFIX="$pwd/install"
+          cmake --build build_SDL_ttf --target install
+
+          cmake -S SDL_mixer -B build_SDL_mixer -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DSDL3MIXER_BUILD_SHARED_LIBS=ON `
+            -DSDLSHARED=ON -DSDL3MIXER_VENDORED=ON -DSDL3_DIR="$pwd/install/lib/cmake/SDL3" `
+            -DCMAKE_INSTALL_PREFIX="$pwd/install"
+          cmake --build build_SDL_mixer --target install
+
+          cmake -S SDL_net -B build_SDL_net -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DSDL3NET_BUILD_SHARED_LIBS=ON `
+            -DSDLSHARED=ON -DSDL3NET_BUILD_SHARED_LIBS=ON -DSDL3_DIR="$pwd/install/lib/cmake/SDL3" `
+            -DCMAKE_INSTALL_PREFIX="$pwd/install"
+          cmake --build build_SDL_net --target install
+
+      # -----------------------------------------------------------------------
+      # Build Monolithic cimgui (ImGui + ImNodes + Markdown)
+      # -----------------------------------------------------------------------
+      - name: Build Monolithic cimgui
+        shell: bash
+        run: |
+          # 1. Generate cimgui implementation against the synced ImGui (v1.91.8)
+          LUAJIT_BIN="../../install/luajit/bin/luajit"
+          if [ "$RUNNER_OS" == "Windows" ]; then LUAJIT_BIN="../../install/luajit/bin/luajit.exe"; fi
+          cd cimgui/generator
+          $LUAJIT_BIN ./generator.lua gcc "gcc"
+          cd ../..
+
+          # 2. Create build dir
+          mkdir -p build_monolithic
+          cd build_monolithic
+
+          # 3. Create Markdown Wrapper
+          cat <<EOF > wrapper_markdown.cpp
+          #include "../imgui/imgui.h"
+          #include "../imgui_markdown/imgui_markdown.h"
+          #include <string.h>
+          
+          static ImGui::MarkdownConfig mdConfig;
+          
+          extern "C" {
+              void Markdown_Init() { /* Setup if needed */ }
+              
+              void Markdown_Render(const char* text, size_t length) {
+                  if (!text) return;
+                  if (length == 0) length = strlen(text);
+                  ImGui::Markdown(text, length, mdConfig);
+              }
+          }
+          EOF
+
+          # 4. Create ImNodes Wrapper
+          cat <<EOF > wrapper_imnodes.cpp
+          #include "../imnodes/imnodes.h"
+          
+          extern "C" {
+              void ImNodes_CreateContext() { ImNodes::CreateContext(); }
+              void ImNodes_DestroyContext() { ImNodes::DestroyContext(); }
+              void ImNodes_BeginNodeEditor() { ImNodes::BeginNodeEditor(); }
+              void ImNodes_EndNodeEditor() { ImNodes::EndNodeEditor(); }
+              void ImNodes_BeginNode(int id) { ImNodes::BeginNode(id); }
+              void ImNodes_EndNode() { ImNodes::EndNode(); }
+              void ImNodes_BeginNodeTitleBar() { ImNodes::BeginNodeTitleBar(); }
+              void ImNodes_EndNodeTitleBar() { ImNodes::EndNodeTitleBar(); }
+              void ImNodes_BeginInputAttribute(int id) { ImNodes::BeginInputAttribute(id, ImNodesPinShape_CircleFilled); }
+              void ImNodes_EndInputAttribute() { ImNodes::EndInputAttribute(); }
+              void ImNodes_BeginOutputAttribute(int id) { ImNodes::BeginOutputAttribute(id, ImNodesPinShape_CircleFilled); }
+              void ImNodes_EndOutputAttribute() { ImNodes::EndOutputAttribute(); }
+              void ImNodes_Link(int id, int s, int e) { ImNodes::Link(id, s, e); }
+              bool ImNodes_IsLinkCreated(int* s, int* e) { return ImNodes::IsLinkCreated(s, e); }
+          }
+          EOF
+
+          # 5. Create CMakeLists.txt
+          cat <<EOF > CMakeLists.txt
+          cmake_minimum_required(VERSION 3.10)
+          project(cimgui_monolithic)
+          set(CMAKE_CXX_STANDARD 14)
+          set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+          include_directories(../cimgui ../cimgui/imgui ../imnodes ../imgui_markdown)
+          file(GLOB IMGUI_SOURCES "../cimgui/imgui/*.cpp")
+          file(GLOB IMNODES_SOURCES "../imnodes/*.cpp")
+          set(CIMGUI_SOURCE "../cimgui/cimgui.cpp")
+          set(WRAPPER_SOURCES "wrapper_markdown.cpp" "wrapper_imnodes.cpp")
+          add_library(cimgui SHARED \${IMGUI_SOURCES} \${IMNODES_SOURCES} \${CIMGUI_SOURCE} \${WRAPPER_SOURCES})
+          install(TARGETS cimgui LIBRARY DESTINATION lib ARCHIVE DESTINATION lib RUNTIME DESTINATION bin)
+          EOF
+
+          # 6. Configure & Build
+          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(pwd)/../../install"
+          if [ "$RUNNER_OS" == "macOS" ]; then
+             export CFLAGS="-arch x86_64 -arch arm64"
+             export CXXFLAGS="-arch x86_64 -arch arm64"
+             export LDFLAGS="-arch x86_64 -arch arm64"
+             CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES=x86_64;arm64"
+          fi
+          
+          cmake -G Ninja $CMAKE_ARGS .
+          cmake --build .
+          cmake --install .
+
+      # -----------------------------------------------------------------------
+      # Build nfdex
+      # -----------------------------------------------------------------------
+      - name: Build nfdex
+        shell: bash
+        run: |
+          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON -DCMAKE_INSTALL_PREFIX=$(pwd)/install"
+          if [ "$RUNNER_OS" == "macOS" ]; then
+             export CFLAGS="-arch x86_64 -arch arm64"
+             export CXXFLAGS="-arch x86_64 -arch arm64"
+             export LDFLAGS="-arch x86_64 -arch arm64"
+             export PKG_CONFIG_PATH="$(pwd)/install/lib/pkgconfig"
+             CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES=x86_64;arm64 -DCMAKE_PREFIX_PATH=$(pwd)/install"
+          else
+             CMAKE_ARGS="$CMAKE_ARGS -DSDL3_DIR=$(pwd)/install/lib/cmake/SDL3"
+          fi
+          cmake -S nfdex -B build_nfd -G Ninja $CMAKE_ARGS
+          cmake --build build_nfd --target install
+
+      # -----------------------------------------------------------------------
+      # Organize Files
+      # -----------------------------------------------------------------------
+      - name: Organize Output
+        shell: bash
+        run: |
+          mkdir -p organizelib/SDL3
+          mkdir -p organizelib/SDL3_image
+          mkdir -p organizelib/SDL3_mixer
+          mkdir -p organizelib/SDL3_net
+          mkdir -p organizelib/SDL3_TTF
+          mkdir -p organizelib/cimgui
+          mkdir -p organizelib/luaJIT
+          mkdir -p organizelib/nfdex
+
+          SRC_BIN="install/bin"
+          SRC_LIB="install/lib"
+          
+          copy_if_exists() {
+            find "$1" -maxdepth 1 -name "$2" -exec cp {} "$3" \; 2>/dev/null || true
+          }
+
+          # --- SDL3 ---
+          copy_if_exists "$SRC_BIN" "SDL3.dll" "organizelib/SDL3/"
+          copy_if_exists "$SRC_LIB" "libSDL3.so*" "organizelib/SDL3/"
+          copy_if_exists "$SRC_LIB" "libSDL3.dylib" "organizelib/SDL3/"
+          cp install/share/licenses/SDL3/LICENSE.txt organizelib/SDL3/ 2>/dev/null || true
+
+          # --- SDL3_image ---
+          copy_if_exists "$SRC_BIN" "SDL3_image.dll" "organizelib/SDL3_image/"
+          copy_if_exists "$SRC_LIB" "libSDL3_image.so*" "organizelib/SDL3_image/"
+          copy_if_exists "$SRC_LIB" "libSDL3_image.dylib" "organizelib/SDL3_image/"
+          copy_if_exists "$SRC_BIN" "libSDL3_image.dll" "organizelib/SDL3_image/"
+
+          # --- SDL3_mixer ---
+          copy_if_exists "$SRC_BIN" "SDL3_mixer.dll" "organizelib/SDL3_mixer/"
+          copy_if_exists "$SRC_LIB" "libSDL3_mixer.so*" "organizelib/SDL3_mixer/"
+          copy_if_exists "$SRC_LIB" "libSDL3_mixer.dylib" "organizelib/SDL3_mixer/"
+          copy_if_exists "$SRC_BIN" "libSDL3_mixer.dll" "organizelib/SDL3_mixer/"
+
+          # --- SDL3_net ---
+          copy_if_exists "$SRC_BIN" "SDL3_net.dll" "organizelib/SDL3_net/"
+          copy_if_exists "$SRC_LIB" "libSDL3_net.so*" "organizelib/SDL3_net/"
+          copy_if_exists "$SRC_LIB" "libSDL3_net.dylib" "organizelib/SDL3_net/"
+          copy_if_exists "$SRC_BIN" "libSDL3_net.dll" "organizelib/SDL3_net/"
+
+          # --- SDL3_TTF ---
+          copy_if_exists "$SRC_BIN" "SDL3_ttf.dll" "organizelib/SDL3_TTF/"
+          copy_if_exists "$SRC_LIB" "libSDL3_ttf.so*" "organizelib/SDL3_TTF/"
+          copy_if_exists "$SRC_LIB" "libSDL3_ttf.dylib" "organizelib/SDL3_TTF/"
+          copy_if_exists "$SRC_BIN" "libSDL3_ttf.dll" "organizelib/SDL3_TTF/"
+
+          # --- cimgui (Monolithic) ---
+          find build_monolithic -name "*.dll" -exec cp {} organizelib/cimgui/ \; 2>/dev/null || true
+          find build_monolithic -name "*.so*" -exec cp {} organizelib/cimgui/ \; 2>/dev/null || true
+          find build_monolithic -name "*.dylib" -exec cp {} organizelib/cimgui/ \; 2>/dev/null || true
+          
+          # Copy Lua definitions
+          cp cimgui/generator/output/*.lua organizelib/cimgui/ 2>/dev/null || true
+          cp cimgui/*.lua organizelib/cimgui/ 2>/dev/null || true
+          
+          # --- luaJIT ---
+          copy_if_exists "install/luajit/bin" "lua51.dll" "organizelib/luaJIT/"
+          copy_if_exists "install/luajit/bin" "luajit.exe" "organizelib/luaJIT/"
+          copy_if_exists "install/luajit/lib" "libluajit-5.1.so*" "organizelib/luaJIT/"
+          copy_if_exists "install/luajit/lib" "libluajit-5.1.dylib" "organizelib/luaJIT/"
+          copy_if_exists "install/luajit/bin" "luajit" "organizelib/luaJIT/"
+          cp luajit/COPYRIGHT organizelib/luaJIT/LICENSE.txt 2>/dev/null || true
+
+          # --- nfdex ---
+          copy_if_exists "$SRC_BIN" "nfd.dll" "organizelib/nfdex/"
+          copy_if_exists "$SRC_BIN" "libnfd.dll" "organizelib/nfdex/"
+          copy_if_exists "$SRC_LIB" "libnfd.so" "organizelib/nfdex/"
+          copy_if_exists "$SRC_LIB" "libnfd.dylib" "organizelib/nfdex/"
+
+          # --- macOS Codesign (Ad-hoc) ---
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            echo "Codesigning macOS dylibs..."
+            find organizelib -name "*.dylib" -exec codesign -f -s - {} \;
+            echo "Codesigning macOS executables..."
+            find organizelib/luaJIT -name "luajit" -exec codesign -f -s - {} \;
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lib-${{ matrix.os }}
+          path: organizelib
