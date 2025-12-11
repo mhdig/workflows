@@ -71,7 +71,7 @@ jobs:
           brew uninstall --ignore-dependencies freetype harfbuzz libpng jpeg-turbo libtiff webp graphite2 || true
           sudo rm -f /opt/homebrew/lib/libfreetype.dylib
           sudo rm -f /opt/homebrew/lib/libharfbuzz.dylib
-          sudo rm-f /opt/homebrew/lib/libpng.dylib
+          sudo rm -f /opt/homebrew/lib/libpng.dylib
           sudo rm -f /opt/homebrew/lib/libjpeg.dylib
           sudo rm -f /opt/homebrew/lib/libtiff.dylib
 
@@ -285,7 +285,7 @@ jobs:
           cmake --build build_SDL_net --target install
 
       # -----------------------------------------------------------------------
-      # Build Monolithic cimgui (ImGui + ImNodes + Markdown) - FIXED FOR ALL PLATFORMS
+      # Build Monolithic cimgui (ImGui + ImNodes + Markdown)
       # -----------------------------------------------------------------------
       - name: Build Monolithic cimgui
         shell: bash
@@ -386,14 +386,9 @@ include_directories(
     ../imgui_markdown
 )
 
-# CRITICAL FIX: Include ALL ImGui source files
-# DO NOT exclude imgui_demo.cpp - cimgui generates wrappers for ALL ImGui functions
 file(GLOB IMGUI_SOURCES "../cimgui/imgui/*.cpp")
-
 file(GLOB IMNODES_SOURCES "../imnodes/*.cpp")
-
 set(CIMGUI_SOURCE "../cimgui/cimgui.cpp")
-
 set(WRAPPER_SOURCES 
     "wrapper_markdown.cpp" 
     "wrapper_imnodes.cpp"
