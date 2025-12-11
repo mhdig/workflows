@@ -30,7 +30,7 @@ jobs:
       # --- VERSION PINS ---
       IMGUI_TAG: v1.91.8                 # Your target ImGui version
       CIMGUIM_VERSION: ""                # Empty string = clone main branch (latest)
-      IMNODES_TAG: 0.5                   # Use tag '0.5' for imnodes
+      IMNODES_VERSION: ""                # CHANGED: Use latest main for now
       IMGUI_MARKDOWN_COMMIT: 5b98a5da5b4f66c843f8e27c6c2d6fd2e5e3f9d7
 
     steps:
@@ -147,8 +147,8 @@ jobs:
           clone_with_version "$NFD_REPO" nfdex ""
           clone_with_version "$LUAJIT_REPO" luajit ""
           
-          # Pin imnodes to the tag '0.5' - This will now use the fallback full clone
-          clone_with_version "$IMNODES_REPO" imnodes "$IMNODES_TAG"
+          # CHANGED: Use latest main for imnodes
+          clone_with_version "$IMNODES_REPO" imnodes "$IMNODES_VERSION"
           
           # Pin imgui_markdown to a specific commit hash
           clone_with_version "$IMGUI_MARKDOWN_REPO" imgui_markdown "$IMGUI_MARKDOWN_COMMIT"
