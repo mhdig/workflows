@@ -300,115 +300,115 @@ jobs:
           cd build_monolithic
 
           cat << 'EOF' > wrapper_markdown.cpp
-#ifdef _WIN32
-    #define EXPORT_API __declspec(dllexport)
-#else
-    #define EXPORT_API __attribute__((visibility("default")))
-#endif
-
-#include "../imgui/imgui.h"
-#include "../imgui_markdown/imgui_markdown.h"
-#include <string.h>
-
-static ImGui::MarkdownConfig mdConfig;
-
-extern "C" {
-    EXPORT_API void Markdown_Init() { 
-        mdConfig.linkCallback = NULL;
-        mdConfig.tooltipCallback = NULL;
-        mdConfig.imageCallback = NULL;
-        mdConfig.linkIcon = NULL;
-        for (int i = 0; i < 3; i++) {
-            mdConfig.headingFormats[i] = { NULL, (i == 0 || i == 1) };
-        }
-    }
-    
-    EXPORT_API void Markdown_Render(const char* text, size_t length) {
-        if (!text) return;
-        if (length == 0) length = strlen(text);
-        ImGui::Markdown(text, length, mdConfig);
-    }
-}
-EOF
-
-          cat << 'EOF' > wrapper_imnodes.cpp
-#ifdef _WIN32
-    #define EXPORT_API __declspec(dllexport)
-#else
-    #define EXPORT_API __attribute__((visibility("default")))
-#endif
-
-#include "../imnodes/imnodes.h"
-
-extern "C" {
-    EXPORT_API void ImNodes_CreateContext() { ImNodes::CreateContext(); }
-    EXPORT_API void ImNodes_DestroyContext() { ImNodes::DestroyContext(); }
-    EXPORT_API void ImNodes_BeginNodeEditor() { ImNodes::BeginNodeEditor(); }
-    EXPORT_API void ImNodes_EndNodeEditor() { ImNodes::EndNodeEditor(); }
-    EXPORT_API void ImNodes_BeginNode(int id) { ImNodes::BeginNode(id); }
-    EXPORT_API void ImNodes_EndNode() { ImNodes::EndNode(); }
-    EXPORT_API void ImNodes_BeginNodeTitleBar() { ImNodes::BeginNodeTitleBar(); }
-    EXPORT_API void ImNodes_EndNodeTitleBar() { ImNodes::EndNodeTitleBar(); }
-    EXPORT_API void ImNodes_BeginInputAttribute(int id) { 
-        ImNodes::BeginInputAttribute(id, ImNodesPinShape_CircleFilled); 
-    }
-    EXPORT_API void ImNodes_EndInputAttribute() { ImNodes::EndInputAttribute(); }
-    EXPORT_API void ImNodes_BeginOutputAttribute(int id) { 
-        ImNodes::BeginOutputAttribute(id, ImNodesPinShape_CircleFilled); 
-    }
-    EXPORT_API void ImNodes_EndOutputAttribute() { ImNodes::EndOutputAttribute(); }
-    EXPORT_API void ImNodes_Link(int id, int s, int e) { ImNodes::Link(id, s, e); }
-    EXPORT_API bool ImNodes_IsLinkCreated(int* s, int* e) { 
-        return ImNodes::IsLinkCreated(s, e); 
-    }
-}
-EOF
-
-          cat << 'EOF' > CMakeLists.txt
-cmake_minimum_required(VERSION 3.10)
-project(cimgui_extended)
-
-set(CMAKE_CXX_STANDARD 14)
-
-if(WIN32)
-    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-else()
-    set(CMAKE_CXX_VISIBILITY_PRESET hidden)
-    set(CMAKE_VISIBILITY_INLINES_HIDDEN 0)
-    add_compile_options(-fvisibility=default)
-endif()
-
-include_directories(
-    ../cimgui 
-    ../cimgui/imgui 
-    ../imnodes 
-    ../imgui_markdown
-)
-
-file(GLOB IMGUI_SOURCES "../cimgui/imgui/*.cpp")
-file(GLOB IMNODES_SOURCES "../imnodes/*.cpp")
-set(CIMGUI_SOURCE "../cimgui/cimgui.cpp")
-set(WRAPPER_SOURCES 
-    "wrapper_markdown.cpp" 
-    "wrapper_imnodes.cpp"
-)
-
-add_library(cimgui_extended SHARED 
-    ${IMGUI_SOURCES}
-    ${IMNODES_SOURCES}
-    ${CIMGUI_SOURCE}
-    ${WRAPPER_SOURCES}
-)
-
-set_target_properties(cimgui_extended PROPERTIES OUTPUT_NAME "cimgui")
-
-install(TARGETS cimgui_extended
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-EOF
+          #ifdef _WIN32
+              #define EXPORT_API __declspec(dllexport)
+          #else
+              #define EXPORT_API __attribute__((visibility("default")))
+          #endif
+          
+          #include "../imgui/imgui.h"
+          #include "../imgui_markdown/imgui_markdown.h"
+          #include <string.h>
+          
+          static ImGui::MarkdownConfig mdConfig;
+          
+          extern "C" {
+              EXPORT_API void Markdown_Init() { 
+                  mdConfig.linkCallback = NULL;
+                  mdConfig.tooltipCallback = NULL;
+                  mdConfig.imageCallback = NULL;
+                  mdConfig.linkIcon = NULL;
+                  for (int i = 0; i < 3; i++) {
+                      mdConfig.headingFormats[i] = { NULL, (i == 0 || i == 1) };
+                  }
+              }
+              
+              EXPORT_API void Markdown_Render(const char* text, size_t length) {
+                  if (!text) return;
+                  if (length == 0) length = strlen(text);
+                  ImGui::Markdown(text, length, mdConfig);
+              }
+          }
+          EOF
+          
+                    cat << 'EOF' > wrapper_imnodes.cpp
+          #ifdef _WIN32
+              #define EXPORT_API __declspec(dllexport)
+          #else
+              #define EXPORT_API __attribute__((visibility("default")))
+          #endif
+          
+          #include "../imnodes/imnodes.h"
+          
+          extern "C" {
+              EXPORT_API void ImNodes_CreateContext() { ImNodes::CreateContext(); }
+              EXPORT_API void ImNodes_DestroyContext() { ImNodes::DestroyContext(); }
+              EXPORT_API void ImNodes_BeginNodeEditor() { ImNodes::BeginNodeEditor(); }
+              EXPORT_API void ImNodes_EndNodeEditor() { ImNodes::EndNodeEditor(); }
+              EXPORT_API void ImNodes_BeginNode(int id) { ImNodes::BeginNode(id); }
+              EXPORT_API void ImNodes_EndNode() { ImNodes::EndNode(); }
+              EXPORT_API void ImNodes_BeginNodeTitleBar() { ImNodes::BeginNodeTitleBar(); }
+              EXPORT_API void ImNodes_EndNodeTitleBar() { ImNodes::EndNodeTitleBar(); }
+              EXPORT_API void ImNodes_BeginInputAttribute(int id) { 
+                  ImNodes::BeginInputAttribute(id, ImNodesPinShape_CircleFilled); 
+              }
+              EXPORT_API void ImNodes_EndInputAttribute() { ImNodes::EndInputAttribute(); }
+              EXPORT_API void ImNodes_BeginOutputAttribute(int id) { 
+                  ImNodes::BeginOutputAttribute(id, ImNodesPinShape_CircleFilled); 
+              }
+              EXPORT_API void ImNodes_EndOutputAttribute() { ImNodes::EndOutputAttribute(); }
+              EXPORT_API void ImNodes_Link(int id, int s, int e) { ImNodes::Link(id, s, e); }
+              EXPORT_API bool ImNodes_IsLinkCreated(int* s, int* e) { 
+                  return ImNodes::IsLinkCreated(s, e); 
+              }
+          }
+          EOF
+          
+                    cat << 'EOF' > CMakeLists.txt
+          cmake_minimum_required(VERSION 3.10)
+          project(cimgui_extended)
+          
+          set(CMAKE_CXX_STANDARD 14)
+          
+          if(WIN32)
+              set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+              add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+          else()
+              set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+              set(CMAKE_VISIBILITY_INLINES_HIDDEN 0)
+              add_compile_options(-fvisibility=default)
+          endif()
+          
+          include_directories(
+              ../cimgui 
+              ../cimgui/imgui 
+              ../imnodes 
+              ../imgui_markdown
+          )
+          
+          file(GLOB IMGUI_SOURCES "../cimgui/imgui/*.cpp")
+          file(GLOB IMNODES_SOURCES "../imnodes/*.cpp")
+          set(CIMGUI_SOURCE "../cimgui/cimgui.cpp")
+          set(WRAPPER_SOURCES 
+              "wrapper_markdown.cpp" 
+              "wrapper_imnodes.cpp"
+          )
+          
+          add_library(cimgui_extended SHARED 
+              ${IMGUI_SOURCES}
+              ${IMNODES_SOURCES}
+              ${CIMGUI_SOURCE}
+              ${WRAPPER_SOURCES}
+          )
+          
+          set_target_properties(cimgui_extended PROPERTIES OUTPUT_NAME "cimgui")
+          
+          install(TARGETS cimgui_extended
+              LIBRARY DESTINATION lib
+              ARCHIVE DESTINATION lib
+              RUNTIME DESTINATION bin
+          )
+          EOF
 
           CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(pwd)/../../install"
           if [ "$RUNNER_OS" == "macOS" ]; then
