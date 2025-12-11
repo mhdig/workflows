@@ -91,12 +91,12 @@ jobs:
           if (Test-Path "C:\vcpkg") { Remove-Item -Recurse -Force "C:\vcpkg" }
 
       # -----------------------------------------------------------------------
-      # Clone Repos & Submodules - WITH CORRECTED CLONE FUNCTION
+      # Clone Repos & Submodules - UPDATED FUNCTION FOR TAGS
       # -----------------------------------------------------------------------
       - name: Clone repos with specific versions
         shell: bash
         run: |
-          # CORRECTED FUNCTION: Properly handles tags/branches vs commit hashes
+          # CORRECTED FUNCTION: Simplified and robust for tags/branches/commits
           clone_with_version() {
             local repo_url=$1
             local dir_name=$2
@@ -104,22 +104,17 @@ jobs:
             echo "Cloning $dir_name..."
 
             if [ -n "$version" ]; then
-              # Check if the version string looks like a commit hash (hexadecimal, 7+ chars)
-              if [[ "$version" =~ ^[0-9a-f]{7,40}$ ]]; then
-                echo "  Version '$version' is a commit hash. Performing full clone..."
+              echo "  Attempting to clone version '$version'..."
+              # First, try the standard shallow clone with --branch (works for branches and some tags)
+              if git clone --branch "$version" --depth 1 "$repo_url" "$dir_name" 2>/dev/null; then
+                echo "  Successfully cloned via --branch flag."
+              else
+                echo "  --branch flag failed. Performing full clone and checkout..."
+                # If that fails, do a full clone and then checkout the specific version
                 git clone "$repo_url" "$dir_name"
                 cd "$dir_name"
                 git checkout "$version"
                 cd ..
-              else
-                # Treat it as a tag or branch name
-                echo "  Cloning tag/branch '$version'..."
-                if git clone --branch "$version" --depth 1 "$repo_url" "$dir_name"; then
-                  echo "  Successfully cloned."
-                else
-                  echo "  ERROR: Failed to clone tag/branch '$version'. It may not exist."
-                  exit 1 # Fail the step immediately
-                fi
               fi
             else
               # Clone the default branch shallowly if no version specified
@@ -152,7 +147,7 @@ jobs:
           clone_with_version "$NFD_REPO" nfdex ""
           clone_with_version "$LUAJIT_REPO" luajit ""
           
-          # Pin imnodes to the confirmed tag '0.5'
+          # Pin imnodes to the tag '0.5' - This will now use the fallback full clone
           clone_with_version "$IMNODES_REPO" imnodes "$IMNODES_TAG"
           
           # Pin imgui_markdown to a specific commit hash
