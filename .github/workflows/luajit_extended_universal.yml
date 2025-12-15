@@ -378,8 +378,16 @@ jobs:
                   if (x) *x = pos.x;
                   if (y) *y = pos.y;
               }
+              EXPORT_API void ImNodes_SnapNodeToGrid(int node_id) {
+                  ImNodes::SnapNodeToGrid(node_id);
+              }
               EXPORT_API void ImNodes_EditorContextResetPanning(float x, float y) {
                   ImNodes::EditorContextResetPanning(ImVec2(x, y));
+              }
+              EXPORT_API void ImNodes_EditorContextGetPanning(float* x, float* y) {
+                  ImVec2 pos = ImNodes::EditorContextGetPanning();
+                  if (x) *x = pos.x;
+                  if (y) *y = pos.y;
               }
 
               // --- Interaction Queries ---
@@ -392,6 +400,9 @@ jobs:
               // Added these for robust interaction
               EXPORT_API bool ImNodes_IsLinkHovered(int* link_id) {
                   return ImNodes::IsLinkHovered(link_id);
+              }
+              EXPORT_API bool ImNodes_IsLinkDropped(int* pin_id, bool including_detached) {
+                  return ImNodes::IsLinkDropped(pin_id, including_detached);
               }
               EXPORT_API bool ImNodes_IsNodeHovered(int* node_id) {
                   return ImNodes::IsNodeHovered(node_id);
@@ -410,6 +421,14 @@ jobs:
               EXPORT_API void ImNodes_ClearNodeSelection() { ImNodes::ClearNodeSelection(); }
               EXPORT_API void ImNodes_ClearLinkSelection() { ImNodes::ClearLinkSelection(); }
 
+              EXPORT_API void ImNodes_SelectNode(int node_id) { 
+                  ImNodes::SelectNode(node_id); 
+              }
+
+              EXPORT_API void ImNodes_SelectLink(int link_id) { 
+                  ImNodes::SelectLink(link_id); 
+              }
+
               // --- MiniMap ---
               EXPORT_API void ImNodes_MiniMap(float size_fraction, int location) { 
                   ImNodes::MiniMap(size_fraction, static_cast<ImNodesMiniMapLocation>(location)); 
@@ -424,6 +443,12 @@ jobs:
                   ImNodes::PushColorStyle(item, color); 
               }
               EXPORT_API void ImNodes_PopColorStyle() { ImNodes::PopColorStyle(); }
+              EXPORT_API void ImNodes_PushStyleVar(int style_item, float value) {
+                  ImNodes::PushStyleVar((ImNodesStyleVar)style_item, value);
+              }
+              EXPORT_API void ImNodes_PopStyleVar(int count) {
+                  ImNodes::PopStyleVar(count);
+              }
           }
           EOF
           
